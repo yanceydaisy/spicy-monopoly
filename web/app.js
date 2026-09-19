@@ -1,7 +1,7 @@
 'use strict';
 
 const API_BASE = (window.SPICY_API_BASE || 'https://spicy-monopoly.lol').replace(/\/$/, '');
-const BRIDGE_DEFAULT = (window.COVE_BRIDGE_BASE || 'https://cove-bridge.onrender.com').replace(/\/$/, '');
+const BRIDGE_DEFAULT = (window.COVE_BRIDGE_BASE || 'https://bridge.47.86.44.170.sslip.io').replace(/\/$/, '');
 const BRIDGE_STORAGE_KEY = 'spicy-monopoly:cove-bridge:v1';
 const DICE_FACES = {1:'⚀',2:'⚁',3:'⚂',4:'⚃',5:'⚄',6:'⚅'};
 

@@ -55,7 +55,7 @@ http://localhost:5173
 开局页里有独立的 Cove Bridge 配置区。默认 URL：
 
 ```text
-https://cove-bridge.onrender.com
+https://bridge.47.86.44.170.sslip.io
 ```
 
 如果 Render 上设置了 `BRIDGE_INGEST_TOKEN`，把对应值填进 Bearer Token。它只保存在当前浏览器的 localStorage，不会提交到 GitHub。

@@ -8,7 +8,9 @@ const DICE_FACES = {1:'⚀',2:'⚁',3:'⚂',4:'⚃',5:'⚄',6:'⚅'};
 function loadBridgeSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem(BRIDGE_STORAGE_KEY) || '{}');
-    return {enabled:false, url:BRIDGE_DEFAULT, token:'', ...saved};
+    const merged = {enabled:false, url:BRIDGE_DEFAULT, token:'', ...saved};
+    if (merged.url === 'https://cove-bridge.onrender.com') merged.url = BRIDGE_DEFAULT;
+    return merged;
   } catch {
     return {enabled:false, url:BRIDGE_DEFAULT, token:''};
   }

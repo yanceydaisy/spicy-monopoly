@@ -721,6 +721,11 @@ def state(game_id: str):
         "positions": g.pos,
         "coins": g.coins,
         "laps": g.lap,
+        # Web UI V1 read-only fields: expose existing engine truth without changing rules.
+        "owners": {str(k): v for k, v in g.owner.items()},
+        "turn_count": g.turn_count,
+        "total_rounds": g.total_rounds,
+        "identities": {p: g.identity.get(p, {}).get("name", "无") for p in (g.p1, g.p2)},
     }
 
 

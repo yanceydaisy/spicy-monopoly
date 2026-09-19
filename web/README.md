@@ -58,7 +58,7 @@ http://localhost:5173
 https://bridge.47.86.44.170.sslip.io
 ```
 
-如果 Render 上设置了 `BRIDGE_INGEST_TOKEN`，把对应值填进 Bearer Token。它只保存在当前浏览器的 localStorage，不会提交到 GitHub。
+如果 VPS 上启用了 `BRIDGE_INGEST_TOKEN`，把对应值填进 Bearer Token；未启用鉴权就留空。它只保存在当前浏览器的 localStorage，不会提交到 GitHub。旧版保存过的 Render 默认地址会自动迁移到 VPS。
 
 点“测试 Bridge”会发送一条测试事件；启用后，开局、掷骰、任务/结算和常用操作会投递到 `/events`。Bridge 只传递发生了什么，游戏真值仍由 Spicy Monopoly API 决定。
 

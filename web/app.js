@@ -51,6 +51,7 @@ const appState = {
   bridge: loadBridgeSettings(),
   bridgeStatus: 'idle',
   bridgeMessage: '',
+  bridgeActionSeq: 0,
   owners: {},
   diceRolling: false,
   animating: false,
@@ -73,6 +74,8 @@ async function request(path, options={}) {
 }
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+let bridgePollTimer = null;
+let bridgePollBusy = false;
 
 async function bridgeEvent(kind, payload={}, force=false) {
   const cfg = appState.bridge;
@@ -83,12 +86,15 @@ async function bridgeEvent(kind, payload={}, force=false) {
   const lines = [
     `【Spicy Monopoly · ${kind}】`,
     '这是来自我们共用棋盘的实时事件。请把它当作当前游戏状态，不要自行生成骰子、金币或下一轮结果。',
+    appState.game?.game_id ? `game_id=${appState.game.game_id}` : '',
     payload.player ? `玩家：${payload.player}` : '',
     payload.dice ? `骰子：${payload.dice}` : '',
     payload.tile ? `落点：${TILE_LABEL[payload.tile] || payload.tile}` : '',
     payload.settled ? `结算：${payload.settled}` : '',
     payload.content ? `内容：${payload.content}` : '',
     payload.next ? `下一位：${payload.next}` : '',
+    payload.actionNeeded ? `待处理动作：${payload.actionNeeded}` : '',
+    payload.hint ? `服务器提示：${payload.hint}` : '',
     payload.message || ''
   ].filter(Boolean);
   const headers = {'Content-Type':'application/json'};
@@ -102,6 +108,98 @@ async function bridgeEvent(kind, payload={}, force=false) {
   try { body = text ? JSON.parse(text) : null; } catch { body = text; }
   if (!res.ok) throw new Error(body?.error ? JSON.stringify(body.error) : (body || `${res.status} ${res.statusText}`));
   return body;
+}
+
+function bridgeHeaders() {
+  const headers = {};
+  if (appState.bridge.token) headers.Authorization = `Bearer ${appState.bridge.token}`;
+  return headers;
+}
+
+async function fetchBridgeActions(gameId, after) {
+  const base = appState.bridge.url.replace(/\/$/, '');
+  const res = await fetch(`${base}/spicy/actions/${encodeURIComponent(gameId)}?after=${after}`, {
+    headers: bridgeHeaders()
+  });
+  const text = await res.text();
+  let body = null;
+  try { body = text ? JSON.parse(text) : null; } catch { body = text; }
+  if (!res.ok) throw new Error(body?.error || body || `${res.status} ${res.statusText}`);
+  return body;
+}
+
+function stopBridgePolling() {
+  if (bridgePollTimer) clearInterval(bridgePollTimer);
+  bridgePollTimer = null;
+  bridgePollBusy = false;
+}
+
+function startBridgePolling() {
+  stopBridgePolling();
+  if (!appState.bridge.enabled || !appState.game || appState.screen !== 'game' || appState.stopped) return;
+  bridgePollTimer = setInterval(() => { void pollBridgeActions(); }, 900);
+  void pollBridgeActions();
+}
+
+async function pollBridgeActions() {
+  if (bridgePollBusy || appState.busy || appState.animating || appState.stopped || !appState.game || !appState.bridge.enabled) return;
+  bridgePollBusy = true;
+  try {
+    let data = await fetchBridgeActions(appState.game.game_id, appState.bridgeActionSeq);
+    if ((data.latestSeq ?? 0) < appState.bridgeActionSeq) {
+      appState.bridgeActionSeq = 0;
+      data = await fetchBridgeActions(appState.game.game_id, 0);
+    }
+    for (const record of (data.actions || [])) {
+      if (!record || record.seq <= appState.bridgeActionSeq) continue;
+      await applyBridgeAction(record);
+      appState.bridgeActionSeq = record.seq;
+    }
+  } catch (err) {
+    appState.bridgeStatus = 'error';
+    appState.bridgeMessage = `动作同步：${err.message || err}`;
+    render();
+  } finally {
+    bridgePollBusy = false;
+  }
+}
+
+async function applyBridgeAction(record) {
+  const before = {...(appState.state?.positions || {})};
+  const result = record.result || {};
+  if (record.action === 'roll' && result && typeof result === 'object') {
+    appState.roll = result;
+    rememberSettlement(result.settled);
+    await refreshGame();
+    const from = before[result.who];
+    const to = appState.state.positions?.[result.who];
+    if (Number.isInteger(from) && Number.isInteger(to) && Number.isInteger(result.dice) && from !== to) {
+      appState.lastMove = {who:result.who, from, to, dice:result.dice};
+      appState.animating = true;
+    } else {
+      appState.lastMove = null;
+      appState.animating = false;
+    }
+    appState.notice = `${record.actor || result.who || 'Cove'} 通过 Cove Bridge 掷骰`;
+    if (result.game_over) {
+      const finalResult = await api.final(appState.game.game_id);
+      appState.final = finalResult.result || '游戏结束';
+    }
+    render();
+    if (appState.animating) {
+      setTimeout(() => {
+        appState.animating = false;
+        appState.lastMove = null;
+        render();
+      }, 1150);
+    }
+    return;
+  }
+
+  if (result.task && appState.roll) appState.roll.task = result.task;
+  appState.notice = result.result || `${record.actor || 'Cove'} 完成了 ${record.action}`;
+  await refreshGame();
+  render();
 }
 
 const api = {
@@ -147,7 +245,7 @@ function setupHTML() {
   return `
   <main class="setup-shell">
     <section class="hero glass">
-      <div class="eyebrow">SPICY MONOPOLY · WEB V1</div>
+      <div class="eyebrow">SPICY MONOPOLY · WEB V2</div>
       <h1>今晚，开一张真正的棋盘。</h1>
       <p>规则、骰子、任务、金币全部认原项目 API 的真值。这个页面只负责把那套规则变成一张能点、能掷、能玩的桌。</p>
       <div class="server-pill"><span class="dot ${appState.help?'ok':''}"></span>${appState.help ? `规则已同步 · ${esc(appState.help.rules_ack)}` : '正在读取服务器规则…'}</div>
@@ -285,7 +383,7 @@ function gameHTML() {
     <section class="players-row">${playerCardHTML(s.p1_name)}${playerCardHTML(s.p2_name)}</section>
     <section class="table-layout">${boardHTML()}<div class="right-stack">${eventHTML()}${controlsHTML()}</div></section>
     <details class="raw-board glass"><summary>原始棋盘 · 服务器真值</summary><pre>${esc(state.board)}</pre></details>
-    <footer>API: ${esc(API_BASE)} · 原项目 CC BY-NC 4.0 · Web UI V1</footer>
+    <footer>API: ${esc(API_BASE)} · 原项目 CC BY-NC 4.0 · Web UI V2</footer>
   </main>`;
 }
 
@@ -375,8 +473,10 @@ async function startGame(e) {
     appState.owners = {};
     appState.lastMove = null;
     appState.animating = false;
+    appState.bridgeActionSeq = 0;
     await refreshGame();
-    bridgeEvent('game_started', {message:`${appState.setup.p1_name} × ${appState.setup.p2_name} 已开局；先手：${appState.state.turn}。`}).catch(()=>{});
+    startBridgePolling();
+    bridgeEvent('game_started', {message:`${appState.setup.p1_name} × ${appState.setup.p2_name} 已开局；先手：${appState.state.turn}。你可以用 spicy_* 工具作为 Cove 操作这局。`}).catch(()=>{});
   } catch (err) {
     appState.error = err.message || String(err);
     try { appState.help = await api.help(); } catch {}
@@ -432,7 +532,7 @@ async function doRoll() {
     const content = taskText(roll.task) || objectText(roll.truth) || objectText(roll.mystery) || objectText(roll.card) || roll.say || '';
     bridgeEvent('turn_result', {
       player:roll.who, dice:roll.dice, tile:roll.tile, settled:roll.settled,
-      content, next:appState.state.turn
+      content, next:appState.state.turn, actionNeeded:roll.action_needed, hint:roll.hint
     }).catch(err => {
       appState.bridgeStatus = 'error';
       appState.bridgeMessage = `Bridge：${err.message || err}`;
@@ -461,10 +561,10 @@ async function doRoll() {
 
 function doGameAction(action, data) {
   const id = appState.game?.game_id;
-  if (action === 'stop') { appState.stopped = true; appState.busy = false; appState.notice = '404 · 已停止'; render(); return; }
+  if (action === 'stop') { stopBridgePolling(); appState.stopped = true; appState.busy = false; appState.notice = '404 · 已停止'; render(); return; }
   if (appState.stopped) return;
   if (action === 'leave') {
-    if (confirm('回到开局页？服务器上的本局不会被删除。')) { appState.screen='setup'; appState.game=null; appState.state=null; appState.shop=null; appState.roll=null; appState.final=''; appState.stopped=false; appState.notice=''; appState.error=''; appState.owners={}; appState.lastMove=null; appState.animating=false; appState.diceRolling=false; render(); }
+    if (confirm('回到开局页？服务器上的本局不会被删除。')) { stopBridgePolling(); appState.screen='setup'; appState.game=null; appState.state=null; appState.shop=null; appState.roll=null; appState.final=''; appState.stopped=false; appState.notice=''; appState.error=''; appState.bridgeActionSeq=0; appState.owners={}; appState.lastMove=null; appState.animating=false; appState.diceRolling=false; render(); }
     return;
   }
   if (action === 'roll') return doRoll();

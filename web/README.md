@@ -1,6 +1,14 @@
-# Spicy Monopoly Web V1
+# Spicy Monopoly Web V2
 
 给 `RennAkira/spicy-monopoly` 写的零依赖、移动端优先 Web 前端。
+
+## V2 新增
+
+- Cove Bridge 双向联机：网页事件进入 ChatGPT；Cove 可通过 MCP 的 `spicy_*` 工具反向执行游戏动作。
+- Bridge 提供按 `game_id` 分组的动作流，网页约每 0.9 秒拉取增量；Cove 掷骰后手机棋盘会自动刷新并播放同一套移动动画。
+- Bridge 事件显式携带 `game_id / action_needed / hint / next_turn`，避免模型自行猜测下一步。
+- `spicy_roll` 永远调用权威游戏 API，骰子、任务、金币、卡牌和赢家都不由模型生成。
+- 已部署移动端 HTTPS 站点：`https://spicy.47.86.44.170.sslip.io`。
 
 ## V1 新增
 

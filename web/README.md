@@ -1,6 +1,16 @@
-# Spicy Monopoly Web V0
+# Spicy Monopoly Web V1
 
 给 `RennAkira/spicy-monopoly` 写的零依赖、移动端优先 Web 前端。
+
+## V1 新增
+
+- 骰子滚动、真实骰面、棋子沿实际点数逐格移动。
+- 当前行动玩家呼吸高亮、事件卡翻面进入。
+- 地盘染色：自建 fork API 直接读取 `owners` 真值；官方实例暂未暴露该字段时，本次会话按真实 lazy-settle 结算记录地盘，不自行猜测。
+- fork 的 `GET /state/{game_id}` 新增只读 `owners / turn_count / total_rounds / identities`，不改变游戏规则。
+- 可选 Cove Bridge 接入：投递开局、掷骰结果、结算与操作事件。
+- Bridge URL / Bearer Token 只保存在浏览器 localStorage，不写入仓库。
+- 404 仍然立即锁住前端，之后不再向游戏 API 或 Bridge 发动作。
 
 ## V0 已完成
 
@@ -40,17 +50,17 @@ http://localhost:5173
 <script>window.SPICY_API_BASE = 'http://127.0.0.1:8069'</script>
 ```
 
-## 为什么 V0 没有“地盘染色”
+## Cove Bridge
 
-上游 `/state/{game_id}` 当前结构化返回只有：`turn / positions / coins / laps`，没有 `owner` 地盘映射；`board_art()` 也只显示格子类型、棋子、金币、手牌和身份，不显示 owner。
+开局页里有独立的 Cove Bridge 配置区。默认 URL：
 
-所以 V0 不猜地盘归属。要做 V1 地盘染色，最干净的做法是给上游 API 的 `/state` 新增只读字段：
-
-```json
-{"owners":{"3":"雁行","7":"Cove"}}
+```text
+https://cove-bridge.onrender.com
 ```
 
-这不会改规则，只是把已有引擎状态暴露给前端。
+如果 Render 上设置了 `BRIDGE_INGEST_TOKEN`，把对应值填进 Bearer Token。它只保存在当前浏览器的 localStorage，不会提交到 GitHub。
+
+点“测试 Bridge”会发送一条测试事件；启用后，开局、掷骰、任务/结算和常用操作会投递到 `/events`。Bridge 只传递发生了什么，游戏真值仍由 Spicy Monopoly API 决定。
 
 ## Attribution
 
